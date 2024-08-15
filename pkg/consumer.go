@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -24,6 +25,10 @@ func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (i
 
 	value, err := cpm.dbClient.Get(consumerProgressBucket, key)
 	if err != nil {
+		// 如果是 key not found 错误，返回 0 表示消费者从头开始消费
+		if errors.Is(err, ErrKeyNotFound) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	if value == nil {
@@ -40,7 +45,20 @@ func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (i
 // UpdateProgress updates the progress of a consumer for a specific queue.
 func (cpm *ConsumerProgressManager) UpdateProgress(consumerID, queueName string, progress int64) error {
 	key := cpm.buildProgressKey(consumerID, queueName)
-	return cpm.dbClient.Put(consumerProgressBucket, key, strconv.FormatInt(progress, 10))
+	err := cpm.dbClient.Put(consumerProgressBucket, key, strconv.FormatInt(progress, 10))
+	if err != nil {
+		if errors.Is(err, ErrBucketNotFound) {
+			// 如果 bucket 不存在，自动创建
+			err := cpm.dbClient.CreateBucket(consumerProgressBucket)
+			if err != nil {
+				return err
+			}
+			// 再次尝试更新进度
+			return cpm.dbClient.Put(consumerProgressBucket, key, strconv.FormatInt(progress, 10))
+		}
+		return err
+	}
+	return nil
 }
 
 // buildProgressKey constructs a unique key for storing consumer progress.
