@@ -10,9 +10,6 @@ type ConsumerProgressManagerInterface interface {
 	UpdateProgress(consumerID, queueName string, progress int64) error
 }
 
-// 处理消费者
-const consumerProgressBucket = "consumer_progress"
-
 type ConsumerProgressManager struct {
 	dbClient *DBClient
 }
