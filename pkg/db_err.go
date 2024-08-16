@@ -19,6 +19,7 @@ const (
 	CodeFailedToDelete
 	CodeClosingDatabase
 	CodeDeletingBackupFile
+	CodeFailToStore
 )
 
 // DBError is a custom error type for database-related errors.
@@ -57,4 +58,7 @@ var (
 	ErrReopeningDatabase     = NewDBError(CodeReopeningDatabase, fmt.Errorf("failed to reopen database"), "")
 	ErrOpeningBackupDatabase = NewDBError(CodeOpeningBackupDatabase, fmt.Errorf("failed to open backup database"), "")
 	ErrFailedToDelete        = NewDBError(CodeFailedToDelete, fmt.Errorf("failed to delete key"), "")
+	ErrDeDeletingBackupFile  = NewDBError(CodeDeletingBackupFile, fmt.Errorf("deleting existing backup file"), "")
+	ErrClosingDatabase       = NewDBError(CodeDeletingBackupFile, fmt.Errorf("dclosing databas"), "")
+	ErrFailToStore           = NewDBError(CodeFailToStore, fmt.Errorf("failed to store data"), "")
 )

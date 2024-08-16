@@ -1,78 +1,136 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"gbblox/pkg"
 	"log"
+	"log/slog"
+	"sync"
+	"time"
 )
 
+type testStruct struct {
+	sid     string
+	Message string
+	Time    time.Time
+}
+
 func main() {
-	// 初始化数据库客户端
-	dbClient, err := pkg.NewDBClient("test.db")
+	// 初始化时将日志几倍修改为debug
+	// 初始化时将日志级别设置为 Debug
+	pkg.SetLoggerLevel(slog.LevelDebug)
+	pkg.Logger.Info("Application started")
+
+	dbClient, err := createDBClient("test.db")
 	if err != nil {
-		log.Fatalf("Failed to create DB client: %v", err)
+		log.Fatalf("Error: %v", err)
 	}
 	defer dbClient.Close()
 
-	// 初始化消费者进度管理器
-	progressManager := pkg.NewConsumerProgressManager(dbClient)
-
-	// 初始化字符串类型的 MessageStore
-	stringStore, err := pkg.NewMessageStore[string](dbClient)
+	structStore, err := pkg.NewMessageStore[testStruct](dbClient)
 	if err != nil {
-		log.Fatalf("Failed to create MessageStore: %v", err)
+		log.Fatalf("Error: %v", err)
 	}
 
-	// 队列名称和消费者 ID
-	queueName := "test_queue"
-	consumerID := "consumer2"
+	pkg.Logger.Info("数据推送")
+	var messages []testStruct
+	for i := 1; i <= 30; i++ {
+		messages = append(messages, testStruct{
+			sid:     fmt.Sprintf("id_%d", i),
+			Message: fmt.Sprintf("Message #%d", i),
+			Time:    time.Now(),
+		})
+	}
+	// Publish the generated messages
+	if err := publishMessages(structStore, "struct_queue", messages); err != nil {
+		pkg.Logger.Error(fmt.Sprintf("Error: %v", err))
+	}
 
-	//// 发布消息
-	//for i := 1; i <= 10; i++ {
-	//	message := fmt.Sprintf("Message %d", i)
-	//	err := stringStore.Write(queueName, message)
-	//	if err != nil {
-	//		log.Printf("Failed to publish message: %v", err)
-	//	}
-	//}
+	// 启动三个消费者进行消费
+	var wg sync.WaitGroup
+	progressManager := pkg.NewConsumerProgressManager(dbClient)
+	consumerIDs := []string{"consumer1", "consumer2", "consumer3"}
+	for _, consumerID := range consumerIDs {
+		wg.Add(1)
+		go func(consumerID string) {
+			defer wg.Done()
+			pkg.Logger.Info(fmt.Sprintf("Consumer %s 开始消费", consumerID))
+			if err := consumeMessages(structStore, progressManager, consumerID, "struct_queue"); err != nil {
+				pkg.Logger.Error(fmt.Sprintf("Error: %v", err))
+			}
+		}(consumerID)
+	}
 
-	// 消费消息
+	wg.Wait()
+
+	pkg.Logger.Info("所有消费者已完成消费")
+
+	pkg.Logger.Info("清理所有数据")
+	if err := cleanupConsumedMessages(dbClient); err != nil {
+		fmt.Println(err)
+	}
+
+}
+
+// 发布消息
+func publishMessages[V any](store *pkg.MessageStore[V], queueName string, messages []V) error {
+	for _, msg := range messages {
+		if err := store.Write(queueName, msg); err != nil {
+			return err
+		}
+		pkg.Logger.Debug(fmt.Sprintf("Published: %+v", msg))
+	}
+	return nil
+}
+
+// 订阅并消费消息
+func consumeMessages[V any](store *pkg.MessageStore[V], progressManager *pkg.ConsumerProgressManager, consumerID, queueName string) error {
 	for {
-		// 获取当前消费者的进度
 		progress, err := progressManager.GetProgress(consumerID, queueName)
 		if err != nil {
-			log.Printf("Failed to get progress: %v", err)
-			break
+			return err
 		}
 
-		// 获取下一条消息
-		message, err := stringStore.Read(queueName, progress)
+		msg, err := store.Read(queueName, progress)
 		if err != nil {
-			if err == pkg.ErrNoMoreMessages {
-				log.Println("No more messages to consume.")
-				break
-			} else {
-				log.Printf("Failed to read message: %v", err)
+			if errors.Is(err, pkg.ErrNoMoreMessages) {
+				pkg.Logger.Info("No more messages to consume.")
 				break
 			}
+			return err
 		}
 
-		// 处理消息（这里只是打印出来）
-		fmt.Printf("Consumed message: %s\n", *message)
-
-		// 更新消费者的进度
-		err = progressManager.UpdateProgress(consumerID, queueName, progress+1)
-		if err != nil {
-			log.Printf("Failed to update progress: %v", err)
-			break
+		pkg.Logger.Info(fmt.Sprintf("Consumed: %+v", *msg))
+		if err := progressManager.UpdateProgress(consumerID, queueName, progress+1); err != nil {
+			return err
 		}
 	}
-	log.Printf("开始清理已经消费过的消息")
-	// 清理所有已消费的消息
-	err = dbClient.CleanupAllConsumed()
+	return nil
+}
+
+// 清理已消费消息
+func cleanupConsumedMessages(dbClient *pkg.DBClient) error {
+	if dbClient == nil {
+		return errors.New("dbClient is nil")
+	}
+	pkg.Logger.Info("Starting cleanup of consumed messages.")
+	pkg.Logger.Info("Before cleanup.")
+	err := dbClient.CleanupAllConsumed()
+	pkg.Logger.Info("After cleanup.")
 	if err != nil {
-		log.Printf("Failed to cleanup consumed messages: %v", err)
-	} else {
-		log.Println("Successfully cleaned up all consumed messages.")
+		return err
 	}
+
+	pkg.Logger.Info("Successfully cleaned up all consumed messages.")
+	return nil
+}
+
+// 创建数据库客户端
+func createDBClient(dbPath string) (*pkg.DBClient, error) {
+	dbClient, err := pkg.NewDBClient(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	return dbClient, nil
 }

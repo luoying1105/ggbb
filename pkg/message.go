@@ -3,7 +3,6 @@ package pkg
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 )
 
 // 定义泛型接口
@@ -32,7 +31,7 @@ func (ms *MessageStore[V]) Write(bucketName string, value V) error {
 	// 将泛型 value 序列化为字节数组
 	data, err := json.Marshal(value)
 	if err != nil {
-		return fmt.Errorf("failed to marshal value: %w", err)
+		return err
 	}
 
 	// 尝试存储字节数组
@@ -51,7 +50,8 @@ func (ms *MessageStore[V]) Write(bucketName string, value V) error {
 			}
 		} else {
 			// 处理其他错误
-			return fmt.Errorf("failed to store byte: %w", err)
+			//return fmt.Errorf("failed to store byte: %w", err)
+			return err
 		}
 	}
 
@@ -68,7 +68,7 @@ func (ms *MessageStore[V]) Read(bucketName string, progress int64) (*V, error) {
 	// 将字节数组反序列化为泛型类型
 	err = json.Unmarshal(keyValue.Value, &value)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal value: %w", err)
+		return nil, err
 	}
 	return &value, nil
 }

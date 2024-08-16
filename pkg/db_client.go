@@ -1,13 +1,9 @@
 package pkg
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+	bolt "go.etcd.io/bbolt"
 	"strconv"
 	"time"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 type DBClient struct {
@@ -129,154 +125,83 @@ func (client *DBClient) GetNext(bucketName string, progress int64) (*KeyValue, e
 	return result, err
 }
 
-func (client *DBClient) CleanupAllConsumed() error {
-	err := client.update(func(tx *bolt.Tx) error {
-		// 遍历数据库中的所有 bucket
-		err := tx.ForEach(func(bucketName []byte, _ *bolt.Bucket) error {
-			// 如果是进度记录的 bucket，跳过
-			if string(bucketName) == consumerProgressBucket {
-				return nil
-			}
-
-			// 获取当前 bucket 的消费进度
-			progressValue := tx.Bucket([]byte(consumerProgressBucket)).Get(bucketName)
-			if progressValue == nil {
-				return nil // 如果没有进度记录，跳过这个 bucket
-			}
-
-			progress, err := strconv.ParseInt(string(progressValue), 10, 64)
-			if err != nil {
-				return ErrInvalidProgress
-			}
-
-			// 清理已消费的消息
-			err = client.cleanupBucket(tx, string(bucketName), progress)
-			if err != nil {
-				return err
-			}
-			return nil
-		})
-
-		return err
-	})
-
-	if err == nil {
-		err = client.backupAndReopen()
-	}
-	return err
-}
-
-// cleanupBucket removes all keys that have been consumed from a specified bucket.
-func (client *DBClient) cleanupBucket(tx *bolt.Tx, bucketName string, progress int64) error {
-	bucket := tx.Bucket([]byte(bucketName))
-	if bucket == nil {
-		return ErrBucketNotFound
-	}
-
-	cursor := bucket.Cursor()
-	for k, _ := cursor.First(); k != nil; k, _ = cursor.Next() {
-		keyInt, err := strconv.ParseUint(string(k), 10, 64)
-		if err != nil {
-			return ErrInvalidProgress
-		}
-
-		if keyInt <= uint64(progress) {
-			if err := bucket.Delete(k); err != nil {
-				return ErrFailedToDelete
-			}
-		}
-	}
-	return nil
-}
+//func (client *DBClient) CleanupAllConsumed() error {
+//	err := client.update(func(tx *bolt.Tx) error {
+//		// 遍历数据库中的所有 bucket
+//		err := tx.ForEach(func(bucketName []byte, _ *bolt.Bucket) error {
+//			// 获取当前 bucket 的消费进度
+//			progressValue := tx.Bucket([]byte(consumerProgressBucket)).Get(bucketName)
+//			if progressValue == nil {
+//				Logger.Info(fmt.Sprintf("Skipping bucket: %s, no progress recorded", bucketName))
+//				return nil // 如果没有进度记录，跳过这个 bucket
+//			}
+//
+//			progress, err := strconv.ParseInt(string(progressValue), 10, 64)
+//			if err != nil {
+//				Logger.Error("Invalid progress value", fmt.Sprintf("bucketName %s %s", string(bucketName)), err)
+//				return ErrInvalidProgress
+//			}
+//			Logger.Debug("Cleaning up consumed messages", fmt.Sprintf("bucketName %s progress %d", string(bucketName), progress))
+//
+//			// 清理已消费的消息
+//			err = client.cleanupBucket(tx, string(bucketName), progress)
+//			if err != nil {
+//				return err
+//			}
+//			return nil
+//		})
+//		return err
+//	})
+//
+//	if err != nil {
+//		Logger.Error("Failed to cleanup consumed messages", err)
+//		return err
+//	}
+//
+//	err = client.backupAndReopen()
+//	if err != nil {
+//		Logger.Error("Failed to backup and reopen the database", err)
+//	}
+//	return err
+//}
+//
+//func (client *DBClient) cleanupBucket(tx *bolt.Tx, bucketName string, progress int64) error {
+//	bucket := tx.Bucket([]byte(bucketName))
+//	if bucket == nil {
+//		Logger.Error(fmt.Sprintf("Bucket not found: %s", bucketName))
+//		return ErrBucketNotFound
+//	}
+//
+//	cursor := bucket.Cursor()
+//	if cursor == nil {
+//		Logger.Info(fmt.Sprintf("Bucket is empty, nothing to clean: %s", bucketName))
+//		return nil
+//	}
+//
+//	for k, _ := cursor.First(); k != nil; k, _ = cursor.Next() {
+//		keyInt, err := strconv.ParseUint(string(k), 10, 64)
+//		if err != nil {
+//			Logger.Error("Invalid progress value", fmt.Sprintf("bucketName %s %s", string(bucketName)), err)
+//			return ErrInvalidProgress
+//		}
+//
+//		if keyInt <= uint64(progress) {
+//			if err := bucket.Delete(k); err != nil {
+//				Logger.Error(fmt.Sprintf("Failed to delete key: %s in bucket: %s", k, bucketName))
+//				return ErrFailedToDelete
+//			}
+//			Logger.Debug(fmt.Sprintf("Deleted key: %s in bucket: %s", k, bucketName))
+//		}
+//	}
+//	return nil
+//}
 
 // backupAndReopen backs up the current database and reopens it.
-func (client *DBClient) backupAndReopen() error {
-	// 确保数据库正确关闭
-	err := client.db.Close()
-	if err != nil {
-		return NewDBError(CodeClosingDatabase, err, "closing database")
-	}
-
-	// 获取数据库路径
-	dbPath := client.dbPath
-
-	// 确保路径存在
-	dir := filepath.Dir(dbPath)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return NewDBError(CodeRenamingDatabaseFile, fmt.Errorf("database directory does not exist: %s", dir), "checking database directory")
-	}
-
-	// 生成备份文件路径
-	backupPath := dbPath + ".bak"
-
-	// 确保没有同名文件存在
-	_, err = os.Stat(backupPath)
-	if !os.IsNotExist(err) {
-		// 如果存在，则先删除旧的备份文件
-		err = os.Remove(backupPath)
-		if err != nil {
-			return NewDBError(CodeDeletingBackupFile, err, "deleting existing backup file")
-		}
-	}
-
-	// 尝试重命名数据库文件为备份文件
-	err = os.Rename(dbPath, backupPath)
-	if err != nil {
-		return NewDBError(CodeRenamingDatabaseFile, err, "renaming database file")
-	}
-
-	// 重新打开数据库文件
-	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
-	if err != nil {
-		_ = os.Rename(backupPath, dbPath) // 尝试恢复备份
-		return NewDBError(CodeReopeningDatabase, err, "reopening database")
-	}
-	client.db = db
-
-	// 重建数据库
-	err = client.rebuildDatabase(backupPath)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (client *DBClient) rebuildDatabase(backupPath string) error {
-	err := client.db.Update(func(tx *bolt.Tx) error {
-		backupDB, err := bolt.Open(backupPath, 0600, nil)
-		if err != nil {
-			return ErrOpeningBackupDatabase
-		}
-		defer backupDB.Close()
-
-		err = backupDB.View(func(backupTx *bolt.Tx) error {
-			return backupTx.ForEach(func(name []byte, bucket *bolt.Bucket) error {
-				newBucket, err := tx.CreateBucketIfNotExists(name)
-				if err != nil {
-					return ErrBucketNotFound
-				}
-				return bucket.ForEach(func(k, v []byte) error {
-					return newBucket.Put(k, v)
-				})
-			})
-		})
-		return err
-	})
-
-	if err == nil {
-		_ = os.Remove(backupPath)
-	}
-
-	return err
-}
 
 // Close closes the database connection.
 func (client *DBClient) Close() error {
 	return client.db.Close()
 }
-
-// 辅助方法
 
 func (client *DBClient) view(fn func(*bolt.Tx) error) error {
 	return client.db.View(fn)
