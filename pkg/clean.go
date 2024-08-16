@@ -46,7 +46,6 @@ func (client *DBClient) CleanupAllConsumed() error {
 			if string(bucketName) == consumerProgressBucket {
 				return nil
 			}
-
 			consumedByAll, err := client.isBucketConsumedByAll(tx, string(bucketName))
 			if err != nil {
 				return err

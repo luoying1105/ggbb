@@ -58,18 +58,17 @@ func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (i
 
 // UpdateProgress updates the progress of a consumer for a specific queue.
 func (cpm *ConsumerProgressManager) UpdateProgress(consumerID, queueName string, newProgress int64) error {
-	// 更新内存中的进度值
 	atomic.StoreInt64(&cpm.progress, newProgress)
 
 	key := cpm.buildProgressKey(consumerID, queueName)
-	err := cpm.dbClient.Put(consumerProgressBucket, key, strconv.FormatInt(newProgress, 10))
+	err := cpm.dbClient.Put(consumerProgressBucket, key, []byte(strconv.FormatInt(newProgress, 10)))
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			err := cpm.dbClient.CreateBucket(consumerProgressBucket)
 			if err != nil {
 				return err
 			}
-			return cpm.dbClient.Put(consumerProgressBucket, key, strconv.FormatInt(newProgress, 10))
+			return cpm.dbClient.Put(consumerProgressBucket, key, []byte(strconv.FormatInt(newProgress, 10)))
 		}
 		return err
 	}

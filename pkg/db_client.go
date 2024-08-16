@@ -25,6 +25,7 @@ func NewDBClient(dbPath string) (*DBClient, error) {
 
 // CreateBucket creates a bucket if it does not already exist.
 func (client *DBClient) CreateBucket(bucketName string) error {
+
 	return client.update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
@@ -35,14 +36,32 @@ func (client *DBClient) CreateBucket(bucketName string) error {
 }
 
 // Put stores a key-value pair in a specified bucket.
-func (client *DBClient) Put(bucketName, key, value string) error {
+func (client *DBClient) Put(bucketName, key string, value []byte) error {
 	return client.update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
-		return bucket.Put([]byte(key), []byte(value))
+		return bucket.Put([]byte(key), value)
 	})
+}
+
+func (client *DBClient) GetFirst(bucketName string) (*KeyValue, error) {
+	var result *KeyValue
+	err := client.view(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(bucketName))
+		if bucket == nil {
+			return ErrBucketNotFound
+		}
+		cursor := bucket.Cursor()
+		key, value := cursor.First()
+		if key == nil {
+			return ErrKeyNotFound
+		}
+		result = &KeyValue{Key: string(key), Value: value}
+		return nil
+	})
+	return result, err
 }
 
 // Get retrieves a value for a given key from a specified bucket.
@@ -138,4 +157,14 @@ func (client *DBClient) view(fn func(*bolt.Tx) error) error {
 
 func (client *DBClient) update(fn func(*bolt.Tx) error) error {
 	return client.db.Update(fn)
+}
+
+func (client *DBClient) Delete(bucketName, key string) error {
+	return client.update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(bucketName))
+		if bucket == nil {
+			return ErrBucketNotFound
+		}
+		return bucket.Delete([]byte(key))
+	})
 }
