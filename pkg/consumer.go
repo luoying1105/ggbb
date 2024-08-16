@@ -32,12 +32,13 @@ func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (i
 		value, err := cpm.dbClient.Get(consumerProgressBucket, key)
 		if err != nil {
 			if errors.Is(err, ErrKeyNotFound) {
-				// Key not found, return 0 as the initial progress
-				Logger.Error(" Key not found, return 0 as the initial progress")
+				// 没有找到与该消费者和队列相关的 消费者第一次访问队列时是预期的，因为此时还没有记录任何进度
+				Logger.Debug(" Key not found, return 0 as the initial progress")
 				return 0, nil
 			}
 			return 0, err
 		}
+		//函数默认返回 0 作为初始进度， 消费者将从队列的开头开始读取
 		if value == nil {
 			return 0, nil
 		}

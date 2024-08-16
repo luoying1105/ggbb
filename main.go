@@ -35,7 +35,7 @@ func main() {
 
 	pkg.Logger.Info("数据推送")
 	var messages []testStruct
-	for i := 1; i <= 30; i++ {
+	for i := 1; i <= 130; i++ {
 		messages = append(messages, testStruct{
 			sid:     fmt.Sprintf("id_%d", i),
 			Message: fmt.Sprintf("Message #%d", i),
@@ -50,7 +50,7 @@ func main() {
 	// 启动三个消费者进行消费
 	var wg sync.WaitGroup
 	progressManager := pkg.NewConsumerProgressManager(dbClient)
-	consumerIDs := []string{"consumer1", "consumer2", "consumer3"}
+	consumerIDs := []string{"consumer1", "consumer2", "consumer6"}
 	for _, consumerID := range consumerIDs {
 		wg.Add(1)
 		go func(consumerID string) {
