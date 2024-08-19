@@ -38,7 +38,7 @@ func (client *dbClient) isBucketConsumedByAll(tx *bolt.Tx, bucketName string) (b
 	return consumedByAll, nil
 }
 
-func (client *dbClient) CleanupAllConsumed() error {
+func (client *dbClient) cleanupAllConsumed() error {
 	err := client.update(func(tx *bolt.Tx) error {
 		return tx.ForEach(func(bucketName []byte, _ *bolt.Bucket) error {
 			if string(bucketName) == consumerProgressBucket {

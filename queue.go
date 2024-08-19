@@ -90,14 +90,14 @@ func CleanDB(dbPath string) error {
 		return err
 	}
 
-	return db.CleanupAllConsumed()
+	return db.cleanupAllConsumed()
 }
 
 func (q *Queue[T]) Close() error {
 	clientMutex.Lock()
 	defer clientMutex.Unlock()
 	if atomic.AddInt32(&clientRefCount, -1) == 0 {
-		return q.db.Close()
+		return q.db.close()
 	}
 	return nil
 }

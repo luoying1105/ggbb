@@ -7,13 +7,13 @@ import (
 // 处理消费者
 const consumerProgressBucket = "consumer_progress"
 
-type KeyValue struct {
-	Key   string
-	Value []byte
+type keyValue struct {
+	key   string
+	value []byte
 }
 
-func (kv KeyValue) String() string {
-	return fmt.Sprintf("Key: %s, Value: %s", kv.Key, string(kv.Value))
+func (kv keyValue) String() string {
+	return fmt.Sprintf("key: %s, Value: %s", kv.key, string(kv.value))
 }
 
 type Options struct {

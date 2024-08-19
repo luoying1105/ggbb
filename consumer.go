@@ -43,7 +43,7 @@ func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (i
 // UpdateProgress updates the progress of a consumer for a specific queue.
 func (cpm *ConsumerProgressManager) UpdateProgress(consumerID, queueName string, newProgress int64) error {
 	key := cpm.buildProgressKey(consumerID, queueName)
-	return cpm.dbClient.Put(consumerProgressBucket, key, []byte(fmt.Sprintf("%d", newProgress)))
+	return cpm.dbClient.put(consumerProgressBucket, key, []byte(fmt.Sprintf("%d", newProgress)))
 }
 
 // buildProgressKey constructs a unique key for storing consumer progress.

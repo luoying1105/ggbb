@@ -42,7 +42,7 @@ func newDBClient(dbPath string) (*dbClient, error) {
 }
 
 // Put stores a key-value pair in a specified bucket with a retry mechanism
-func (client *dbClient) Put(bucketName, key string, value []byte) error {
+func (client *dbClient) put(bucketName, key string, value []byte) error {
 	return client.update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
@@ -54,15 +54,15 @@ func (client *dbClient) Put(bucketName, key string, value []byte) error {
 }
 
 // GetAll retrieves all key-value pairs from a specified bucket
-func (client *dbClient) GetAll(bucketName string) ([]*KeyValue, error) {
-	var results []*KeyValue
+func (client *dbClient) getAll(bucketName string) ([]*keyValue, error) {
+	var results []*keyValue
 	err := client.view(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
 			return err
 		}
 		return bucket.ForEach(func(k, v []byte) error {
-			results = append(results, &KeyValue{Key: string(k), Value: v})
+			results = append(results, &keyValue{key: string(k), value: v})
 			return nil
 		})
 	})
@@ -86,7 +86,7 @@ func (client *dbClient) get(bucketName, key string) ([]byte, error) {
 }
 
 // PutWithAutoIncrementKey stores a value with an auto-incremented key in a specified bucket with retry mechanism
-func (client *dbClient) PutWithAutoIncrementKey(bucketName string, value []byte) error {
+func (client *dbClient) putWithAutoIncrementKey(bucketName string, value []byte) error {
 	var lastErr error
 	for i := 0; i < 3; i++ { // Retry mechanism for up to 3 attempts
 		lastErr = client.update(func(tx *bolt.Tx) error {
@@ -110,8 +110,8 @@ func (client *dbClient) PutWithAutoIncrementKey(bucketName string, value []byte)
 }
 
 // GetNext retrieves the next key-value pair based on the progress in a specified bucket
-func (client *dbClient) GetNext(bucketName, progress string) (*KeyValue, error) {
-	var result *KeyValue
+func (client *dbClient) getNext(bucketName, progress string) (*keyValue, error) {
+	var result *keyValue
 	err := client.view(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
@@ -123,14 +123,14 @@ func (client *dbClient) GetNext(bucketName, progress string) (*KeyValue, error) 
 			return ErrKeyNotFound
 		}
 
-		result = &KeyValue{Key: progress, Value: value}
+		result = &keyValue{key: progress, value: value}
 		return nil
 	})
 	return result, err
 }
 
 // Close closes the database connection
-func (client *dbClient) Close() error {
+func (client *dbClient) close() error {
 	return client.db.Close()
 }
 
@@ -151,7 +151,7 @@ func (client *dbClient) update(fn func(*bolt.Tx) error) error {
 	return tx.Commit()
 }
 
-func (client *dbClient) Delete(bucketName, key string) error {
+func (client *dbClient) delete(bucketName, key string) error {
 	return client.update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {

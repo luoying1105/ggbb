@@ -37,7 +37,7 @@ func (ms *MessageStore[V]) Write(bucketName string, value V) error {
 
 func (ms *MessageStore[V]) Read(bucketName, progress string) (V, error) {
 
-	keyValue, err := ms.dbClient.GetNext(bucketName, progress)
+	keyValue, err := ms.dbClient.getNext(bucketName, progress)
 	if err != nil {
 		var zero V
 		return zero, err
@@ -47,7 +47,7 @@ func (ms *MessageStore[V]) Read(bucketName, progress string) (V, error) {
 		return zero, ErrKeyNotFound
 	}
 	// Decode the data using the coder
-	value, err := ms.coder.Decode(keyValue.Value)
+	value, err := ms.coder.Decode(keyValue.value)
 	if err != nil {
 		var zero V
 		return zero, err
@@ -56,5 +56,5 @@ func (ms *MessageStore[V]) Read(bucketName, progress string) (V, error) {
 }
 
 func (ms *MessageStore[V]) StoreByte(bucketName string, message []byte) error {
-	return ms.dbClient.PutWithAutoIncrementKey(bucketName, message)
+	return ms.dbClient.putWithAutoIncrementKey(bucketName, message)
 }
