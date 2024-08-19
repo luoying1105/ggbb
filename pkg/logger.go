@@ -17,5 +17,5 @@ func SetLoggerLevel(level slog.Level) {
 	Logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
 	}))
-	Logger.Info("Logger initialized", slog.String("level", level.String()))
+	Logger.Debug("Logger initialized", slog.String("level", level.String()))
 }
