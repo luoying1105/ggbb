@@ -16,24 +16,28 @@ type MsgImpl[T any] struct {
 }
 
 func (m *MsgImpl[T]) Ack() error {
-	if !m.processed {
-		// 更新该消费者的进度，而不删除消息
-		currentProgress, err := m.progressManager.GetProgress(m.consumerID, m.queueName)
-		if err != nil {
-			return err
-		}
-		err = m.progressManager.UpdateProgress(m.consumerID, m.queueName, currentProgress+1)
-		if err != nil {
-			return err
-		}
-		m.processed = true
+	consumerID := m.consumerID
+	queueName := m.queueName
+
+	// 获取当前进度
+	progress, err := m.progressManager.GetProgress(consumerID, queueName)
+	if err != nil {
+		return err
 	}
+
+	// 更新进度
+	newProgress := progress + 1
+	err = m.progressManager.UpdateProgress(consumerID, queueName, newProgress)
+	if err != nil {
+		return err
+	}
+
 	return nil
+
 }
 
 func (m *MsgImpl[T]) NAck() error {
 	// Message is not acknowledged, do nothing
-	m.processed = false
 	return nil
 }
 

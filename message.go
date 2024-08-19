@@ -5,15 +5,11 @@ import (
 )
 
 type MessageStore[V any] struct {
-	dbClient *DBClient
+	dbClient *dbClient
 	coder    Coder[V]
 }
 
-func NewMessageStore[V any](dbClient *DBClient, coder Coder[V]) (*MessageStore[V], error) {
-	err := dbClient.CreateBucket("consumer_progress")
-	if err != nil {
-		return nil, err
-	}
+func NewMessageStore[V any](dbClient *dbClient, coder Coder[V]) (*MessageStore[V], error) {
 	return &MessageStore[V]{dbClient: dbClient, coder: coder}, nil
 }
 
@@ -27,10 +23,7 @@ func (ms *MessageStore[V]) Write(bucketName string, value V) error {
 	err = ms.StoreByte(bucketName, data)
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
-			err = ms.dbClient.CreateBucket(bucketName)
-			if err != nil {
-				return err
-			}
+
 			err = ms.StoreByte(bucketName, data)
 			if err != nil {
 				return err
@@ -42,11 +35,16 @@ func (ms *MessageStore[V]) Write(bucketName string, value V) error {
 	return nil
 }
 
-func (ms *MessageStore[V]) Read(bucketName string, progress int64) (V, error) {
+func (ms *MessageStore[V]) Read(bucketName, progress string) (V, error) {
+
 	keyValue, err := ms.dbClient.GetNext(bucketName, progress)
 	if err != nil {
 		var zero V
 		return zero, err
+	}
+	if keyValue == nil {
+		var zero V
+		return zero, ErrKeyNotFound
 	}
 	// Decode the data using the coder
 	value, err := ms.coder.Decode(keyValue.Value)

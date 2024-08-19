@@ -11,11 +11,12 @@ import (
 // 测试nack
 func TestQueueWithNack(t *testing.T) {
 	// 创建队列
-	queue, err := NewQueue[testStruct]("test_queue_nack", &JsonCoder[testStruct]{})
+	dbPath := "test.db"
+	queue, err := NewQueue[testStruct]("test_queue_nack", dbPath, &JsonCoder[testStruct]{})
+	t.Log("create")
 	if err != nil {
 		t.Fatalf("Error creating queue: %v", err)
 	}
-	defer Close()
 
 	// 推送消息到队列
 	message := testStruct{
@@ -23,17 +24,19 @@ func TestQueueWithNack(t *testing.T) {
 		Message: "Message to be Nack",
 		Time:    time.Now(),
 	}
-
+	t.Log(message)
 	if err := queue.Enqueue(message); err != nil {
+
 		t.Fatalf("Error enqueuing message: %v", err)
 	}
+	t.Log(message)
 
 	consumerID := "consumer_nack"
 	msg, err := queue.Dequeue(consumerID)
 	if err != nil {
 		t.Fatalf("Error dequeuing message: %v", err)
 	}
-
+	t.Log("consumer_nack")
 	// Simulate processing failure and call Nack
 	if err := msg.NAck(); err != nil {
 		t.Errorf("Error calling Nack: %v", err)
@@ -55,7 +58,8 @@ func TestQueueWithNack(t *testing.T) {
 // 一个队列不同消费者同时消费
 func TestQueueMultipleConsumers(t *testing.T) {
 	// 创建队列
-	queue, err := NewQueue[testStruct]("test_queue", &JsonCoder[testStruct]{})
+	dbPath := "test2=2.db"
+	queue, err := NewQueue[testStruct]("test_queue", dbPath, &JsonCoder[testStruct]{})
 	if err != nil {
 		t.Fatalf("Error creating queue: %v", err)
 	}
@@ -92,17 +96,18 @@ func TestQueueMultipleConsumers(t *testing.T) {
 				if err != nil {
 					break
 				}
-				receivedMessages++
+
 				// 不删除消息，只记录进度
 				if err := msg.Ack(); err != nil {
 					t.Errorf("Error acknowledging message: %v", err)
 				}
+				receivedMessages++
 			}
 
 			t.Logf("Consumer %s received %d messages.", consumerID, receivedMessages)
 
 			if receivedMessages != expectedMessages {
-				t.Errorf("Consumer %s did not receive all messages, received: %d", consumerID, receivedMessages)
+				t.Errorf("Consumer %s did not receive all messages, received: %d expected: %d", consumerID, receivedMessages, expectedMessages)
 			}
 		}(consumerID)
 	}
@@ -113,7 +118,7 @@ func TestQueueMultipleConsumers(t *testing.T) {
 // 不同队列，只有一个消费者消费了一条队列
 // Cleanup the database before running the test
 func cleanDatabase() {
-	err := CleanDB()
+	err := CleanDB("test.db")
 	if err != nil {
 		fmt.Printf("Error cleaning database: %v\n", err)
 	}
@@ -121,19 +126,20 @@ func cleanDatabase() {
 
 func TestMultiQueue(t *testing.T) {
 	defer cleanDatabase()
-	defer Close()
+
 	// Define queue names
 	queueNames := []string{"queue1", "queue2", "queue3"}
+	path := "1.db"
 
 	// Create queues
 	var queues []*Queue[testStruct]
 	for _, queueName := range queueNames {
-		queue, err := NewQueue[testStruct](queueName, &JsonCoder[testStruct]{})
+		queue, err := NewQueue[testStruct](queueName, path, &JsonCoder[testStruct]{})
 		if err != nil {
 			t.Fatalf("Error creating queue %s: %v", queueName, err)
 		}
 		queues = append(queues, queue)
-
+		defer queue.Close()
 	}
 
 	// Push messages to different queues

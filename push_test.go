@@ -16,14 +16,15 @@ type testStruct struct {
 // 验证 多个队列推送 并且只有一个消费者
 func TestMultiQueue1(t *testing.T) {
 	queueNames := []string{"queue1", "queue2", "queue3"}
-	defer Close()
+
 	var queues []*Queue[testStruct]
 	for _, queueName := range queueNames {
-		queue, err := NewQueue[testStruct](queueName, &JsonCoder[testStruct]{})
+		queue, err := NewQueue[testStruct](queueName, "test3.db", &JsonCoder[testStruct]{})
 		if err != nil {
 			t.Fatalf("Error creating queue %s: %v", queueName, err)
 		}
 		queues = append(queues, queue)
+		defer queue.Close()
 
 	}
 
@@ -37,6 +38,7 @@ func TestMultiQueue1(t *testing.T) {
 				Time:    time.Now(),
 			}
 			err := queue.Enqueue(msg)
+
 			if err != nil {
 				t.Fatalf("Error enqueuing message to %s: %v", queueNames[i], err)
 			}

@@ -2,14 +2,16 @@ package bunnymq
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 )
 
 type ConsumerProgressManager struct {
-	dbClient *DBClient
+	dbClient *dbClient
 }
 
-func NewConsumerProgressManager(dbClient *DBClient) *ConsumerProgressManager {
+func NewConsumerProgressManager(dbClient *dbClient) *ConsumerProgressManager {
+	dbClient.ensureBucketExists(consumerProgressBucket)
 	return &ConsumerProgressManager{
 		dbClient: dbClient,
 	}
@@ -18,7 +20,7 @@ func NewConsumerProgressManager(dbClient *DBClient) *ConsumerProgressManager {
 // GetProgress retrieves the progress of a consumer for a specific queue.
 func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (int64, error) {
 	key := cpm.buildProgressKey(consumerID, queueName)
-	value, err := cpm.dbClient.Get(consumerProgressBucket, key)
+	value, err := cpm.dbClient.get(consumerProgressBucket, key)
 	if err != nil {
 		if errors.Is(err, ErrKeyNotFound) {
 			// 没有找到与该消费者和队列相关的进度记录
@@ -41,21 +43,10 @@ func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (i
 // UpdateProgress updates the progress of a consumer for a specific queue.
 func (cpm *ConsumerProgressManager) UpdateProgress(consumerID, queueName string, newProgress int64) error {
 	key := cpm.buildProgressKey(consumerID, queueName)
-	err := cpm.dbClient.Put(consumerProgressBucket, key, []byte(strconv.FormatInt(newProgress, 10)))
-	if err != nil {
-		if errors.Is(err, ErrBucketNotFound) {
-			err := cpm.dbClient.CreateBucket(consumerProgressBucket)
-			if err != nil {
-				return err
-			}
-			return cpm.dbClient.Put(consumerProgressBucket, key, []byte(strconv.FormatInt(newProgress, 10)))
-		}
-		return err
-	}
-	return nil
+	return cpm.dbClient.Put(consumerProgressBucket, key, []byte(fmt.Sprintf("%d", newProgress)))
 }
 
 // buildProgressKey constructs a unique key for storing consumer progress.
 func (cpm *ConsumerProgressManager) buildProgressKey(consumerID, queueName string) string {
-	return queueName + "_" + consumerID
+	return fmt.Sprintf("%s:%s", consumerID, queueName)
 }

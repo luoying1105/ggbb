@@ -1,83 +1,59 @@
 package bunnymq
 
 import (
+	"errors"
+	"fmt"
 	bolt "go.etcd.io/bbolt"
 	"strconv"
-	"sync"
 	"time"
 )
 
-var globalDBClient *DBClient
-var dbClientOnce sync.Once
-
-func initDBClient() error {
-	var err error
-	dbClientOnce.Do(func() {
-		globalDBClient, err = NewDBClient(dbName)
-
-	})
-	return err
-}
-
-type DBClient struct {
+type dbClient struct {
 	db     *bolt.DB
 	dbPath string
 }
 
-var _ DBClientInterface = &DBClient{}
+// ErrTxTimeout is an error for transaction timeout
+var ErrTxTimeout = errors.New("transaction timed out")
 
-// NewDBClient initializes a new DBClient.
-func NewDBClient(dbPath string) (*DBClient, error) {
-	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
+// newDBClient creates a new database client with an increased timeout for write transactions
+func newDBClient(dbPath string) (*dbClient, error) {
+	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 5 * time.Second}) // Increased timeout to 5 seconds
 	if err != nil {
 		return nil, ErrFailedToCreate
 	}
-
-	return &DBClient{db: db, dbPath: dbPath}, nil
+	return &dbClient{db: db, dbPath: dbPath}, nil
 }
 
-// CreateBucket creates a bucket if it does not already exist.
-func (client *DBClient) CreateBucket(bucketName string) error {
+// Put stores a key-value pair in a specified bucket with a retry mechanism
+func (client *dbClient) Put(bucketName, key string, value []byte) error {
 	return client.update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
-			return ErrBucketNotFound
+			return err
 		}
-		return nil
-	})
-}
 
-// Put stores a key-value pair in a specified bucket.
-func (client *DBClient) Put(bucketName, key string, value []byte) error {
-	return client.update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(bucketName))
-		if bucket == nil {
-			return ErrBucketNotFound
-		}
 		return bucket.Put([]byte(key), value)
 	})
 }
 
-func (client *DBClient) GetFirst(bucketName string) (*KeyValue, error) {
-	var result *KeyValue
+// GetAll retrieves all key-value pairs from a specified bucket
+func (client *dbClient) GetAll(bucketName string) ([]*KeyValue, error) {
+	var results []*KeyValue
 	err := client.view(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(bucketName))
-		if bucket == nil {
-			return ErrBucketNotFound
+		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		if err != nil {
+			return err
 		}
-		cursor := bucket.Cursor()
-		key, value := cursor.First()
-		if key == nil {
-			return ErrKeyNotFound
-		}
-		result = &KeyValue{Key: string(key), Value: value}
-		return nil
+		return bucket.ForEach(func(k, v []byte) error {
+			results = append(results, &KeyValue{Key: string(k), Value: v})
+			return nil
+		})
 	})
-	return result, err
+	return results, err
 }
 
-// Get retrieves a value for a given key from a specified bucket.
-func (client *DBClient) Get(bucketName, key string) ([]byte, error) {
+func (client *dbClient) get(bucketName, key string) ([]byte, error) {
 	var value []byte
 	err := client.view(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
@@ -93,90 +69,89 @@ func (client *DBClient) Get(bucketName, key string) ([]byte, error) {
 	return value, err
 }
 
-// GetAll retrieves all key-value pairs from a specified bucket.
-func (client *DBClient) GetAll(bucketName string) ([]*KeyValue, error) {
-	var results []*KeyValue
-	err := client.view(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(bucketName))
-		if bucket == nil {
-			return ErrBucketNotFound
-		}
-		return bucket.ForEach(func(k, v []byte) error {
-			results = append(results, &KeyValue{Key: string(k), Value: v})
-			return nil
+// PutWithAutoIncrementKey stores a value with an auto-incremented key in a specified bucket with retry mechanism
+func (client *dbClient) PutWithAutoIncrementKey(bucketName string, value []byte) error {
+	var lastErr error
+	for i := 0; i < 3; i++ { // Retry mechanism for up to 3 attempts
+		lastErr = client.update(func(tx *bolt.Tx) error {
+			bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+			if err != nil {
+				return err
+			}
+			seq, err := bucket.NextSequence()
+			if err != nil {
+				return ErrFailedToCreate
+			}
+			key := strconv.FormatUint(seq, 10)
+			return bucket.Put([]byte(key), value)
 		})
-	})
-	return results, err
+		if lastErr == nil || !errors.Is(lastErr, ErrTxTimeout) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond) // Small delay before retrying
+	}
+	return lastErr
 }
 
-// PutWithAutoIncrementKey stores a value with an auto-incremented key in a specified bucket.
-func (client *DBClient) PutWithAutoIncrementKey(bucketName string, value []byte) error {
-	return client.update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(bucketName))
-		if bucket == nil {
-			return ErrBucketNotFound
-		}
-
-		seq, err := bucket.NextSequence()
-		if err != nil {
-			return ErrFailedToCreate
-		}
-
-		key := strconv.FormatUint(seq, 10)
-		return bucket.Put([]byte(key), value)
-	})
-}
-
-// GetNext retrieves the next key-value pair based on the progress in a specified bucket.
-func (client *DBClient) GetNext(bucketName string, progress int64) (*KeyValue, error) {
+// GetNext retrieves the next key-value pair based on the progress in a specified bucket
+func (client *dbClient) GetNext(bucketName, progress string) (*KeyValue, error) {
 	var result *KeyValue
 	err := client.view(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
-
-		cursor := bucket.Cursor()
-		var key, value []byte
-
-		for i := int64(0); i <= progress; i++ {
-			if i == 0 {
-				key, value = cursor.First()
-			} else {
-				key, value = cursor.Next()
-			}
-			if key == nil {
-				return ErrNoMoreMessages
-			}
+		fmt.Println("get bucket", bucketName, progress)
+		// 使用 progress 作为键直接获取对应的值
+		value := bucket.Get([]byte(progress))
+		if value == nil {
+			return ErrKeyNotFound
 		}
 
-		result = &KeyValue{Key: string(key), Value: value}
+		result = &KeyValue{Key: progress, Value: value}
 		return nil
 	})
 	return result, err
 }
 
-// backupAndReopen backs up the current database and reopens it.
-
-// Close closes the database connection.
-func (client *DBClient) Close() error {
+// Close closes the database connection
+func (client *dbClient) Close() error {
 	return client.db.Close()
 }
 
-func (client *DBClient) view(fn func(*bolt.Tx) error) error {
+func (client *dbClient) view(fn func(*bolt.Tx) error) error {
 	return client.db.View(fn)
 }
 
-func (client *DBClient) update(fn func(*bolt.Tx) error) error {
-	return client.db.Update(fn)
+func (client *dbClient) update(fn func(*bolt.Tx) error) error {
+	tx, err := client.db.Begin(true)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-func (client *DBClient) Delete(bucketName, key string) error {
+func (client *dbClient) Delete(bucketName, key string) error {
 	return client.update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
 		return bucket.Delete([]byte(key))
+	})
+}
+
+func (client *dbClient) ensureBucketExists(bucketName string) error {
+	return client.update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		if err != nil {
+			return fmt.Errorf("failed to create or access bucket: %v", err)
+		}
+		return nil
 	})
 }
