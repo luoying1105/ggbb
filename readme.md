@@ -1,123 +1,120 @@
-### 使用说明文档
+### Bunnymq 使用指南
 
-#### 项目背景
+#### 1. 项目简介
 
-基于go.etcd.io/bbolt 实现消息订阅模式
+`Bunnymq` 是一个基于 BoltDB 的消息队列库，提供了消息的推送（生产）、消费（订阅）、消息的确认（ACK）、拒绝（NACK），以及对已消费消息的清理功能。
 
-#### 安装与
+#### 2. 如何安装
 
-   ```bash
-   go env -w GOINSECURE=gitlab.cnns
-   go get gitlab.cnns/luoying/gbbolt@v1.0.1
-   ```
+```bash
+go env -w GOPRIVATE=gitlab.cnns 
+go get gitlab.cnns/luoying/bunnymq@v0.0.1 
+```
 
-go mod 结构如下
+#### 3. 如何使用
 
-   ```
-go 1.21.4
-
-require gitlab.cnns/luoying/gbbolt v1.0.1
-
-require (
-go.etcd.io/bbolt v1.3.10 // indirect
-golang.org/x/sys v0.20.0 // indirect
-)
-
-   ```
-
-#### 使用说明
-
-假设推送数据结构如下
-
-   ```go
-   import gbblot "gitlab.cnns/luoying/gbbolt/pkg"
-
-type testStruct struct {
-sid     string
-Message string
-Time    time.Time
-}
-
-   ``` 
-
-1. **消息推送**
-   新建队列并且推送结构体
-   ```go
-   queue, err := gbblot.NewQueue[testStruct]("queue1", &gbblot.JsonCoder[testStruct]{})
-   if err != nil {
-       fmt.Printf("Error creating queue: %v", err)
-   }
-
-   msg := testStruct{
-       sid:     "1",
-       Message: "Message content",
-       Time:    time.Now(),
-   }
-   err = queue.Enqueue(msg)
-   if err != nil {
-       fmt.Printf("Error enqueuing message: %v", err)
-   }
-   ```
-
-2. **消息获取**
-
-   ```go
-   consumerID := "consumer1"
-   msg, err := queue.Dequeue(consumerID)
-   if err != nil {
-       fmt.Println("Error dequeuing message:", err)
-   } else {
-       fmt.Println("Received message:", msg.Data())
-   }
-   ```
-
-3. **确认消息（ACK）**
-
-   ```go
-   err = msg.Ack()
-   if err != nil {
-       fmt.Println("Error acknowledging message:", err)
-   }
-   ```
-
-4. **拒绝消息（NACK）**
-
-   ```go
-   err = msg.NAck()
-   if err != nil {
-       fmt.Println("Error rejecting message:", err)
-   }
-   ```
-
-5. **关闭数据库**
-
-   在程序结束时，关闭数据库连接：
-   ```go
-   err := gbblot.Close()
-   if err != nil {
-       fmt.Println("Error closing database:", err)
-   }
-   ```
-
-6. **清理数据库**
-
-   清理所有已消费的数据：
-   ```go
-   err := gbblot.CleanDB()
-   if err != nil {
-       fmt.Println("Error cleaning database:", err)
-   }
-   ```
-
-#### 示例
+##### 3.1 推送消息
 
 ```go
 package main
 
 import (
 	"fmt"
-	gbblot "gitlab.cnns/luoying/gbbolt/pkg"
+	bunnymq "gitlab.cnns/luoying/bunnymq/pkg"
+	"time"
+)
 
+type testStruct struct {
+	sid     string
+	Message string
+	Time    time.Time
+}
+
+func main() {
+	queueNames := []string{"queue1", "queue2", "queue3"}
+	var queues []*bunnymq.Queue[testStruct]
+	for _, queueName := range queueNames {
+		queue, err := bunnymq.NewQueue[testStruct](queueName, &bunnymq.JsonCoder[testStruct]{})
+		if err != nil {
+			fmt.Printf("Error creating queue %s: %v", queueName, err)
+		}
+		queues = append(queues, queue)
+	}
+
+	// 往队列中推送消息
+	for i, queue := range queues {
+		for j := 1; j <= 30; j++ {
+			msg := testStruct{
+				sid:     fmt.Sprintf("Queue%d", i+1),
+				Message: fmt.Sprintf("Message %d", j),
+				Time:    time.Now(),
+			}
+			err := queue.Enqueue(msg)
+			if err != nil {
+				fmt.Printf("Error enqueuing message to %s: %v", queueNames[i], err)
+			}
+		}
+	}
+}
+```
+
+##### 3.2 消费消息并确认（ACK）
+
+```go
+consumerID := "consumer1"
+receivedMessages := 0
+for {
+msg, err := queues[0].Dequeue(consumerID)
+if err != nil {
+break
+}
+receivedMessages++
+// 确认消息
+if err := msg.Ack(); err != nil {
+fmt.Printf("Error acknowledging message: %v", err)
+}
+}
+```
+
+##### 3.3 消息拒绝（NACK）
+
+```go
+if err := msg.NAck(); err != nil {
+fmt.Printf("Error rejecting message: %v", err)
+}
+```
+
+##### 3.4 清理已消费的消息
+
+```go
+err := bunnymq.CleanDB()
+if err != nil {
+fmt.Println("Error cleaning database:", err)
+}
+```
+
+##### 3.5 关闭数据库连接
+
+```go
+err := bunnymq.Close()
+if err != nil {
+fmt.Println("Error closing database:", err)
+}
+```
+
+#### 4. 注意事项
+
+- 确保每个消费者都有唯一的 `consumerID`。
+- 在程序结束时，务必关闭数据库连接。
+
+#### 5. 示例项目
+
+```
+package main
+
+import (
+	"fmt"
+	bunnymq "gitlab.cnns/luoying/bunnymq"
 	"time"
 )
 
@@ -130,9 +127,9 @@ type testStruct struct {
 func main() {
 	queueNames := []string{"queue1", "queue2", "queue3"}
 	// 创建并推送消息到多个队列
-	var queues []*gbblot.Queue[testStruct]
+	var queues []*bunnymq.Queue[testStruct]
 	for _, queueName := range queueNames {
-		queue, err := gbblot.NewQueue[testStruct](queueName, &gbblot.JsonCoder[testStruct]{})
+		queue, err := bunnymq.NewQueue[testStruct](queueName, &bunnymq.JsonCoder[testStruct]{})
 		if err != nil {
 			fmt.Printf("Error creating queue %s: %v", queueName, err)
 		}
@@ -189,20 +186,19 @@ func main() {
 		}
 
 		if receivedMessages != 30 {
-			fmt.Println(fmt.Sprintf("Consumer %s did not receive all messages from %s, received: %d", consumerID, queueNames[i+1], receivedMessages),
-			)
+			fmt.Println(fmt.Sprintf("Consumer %s did not receive all messages from %s, received: %d", consumerID, queueNames[i+1], receivedMessages))
 
 		}
 	}
 
 	//关闭数据库
-	err := gbblot.Close()
+	err := bunnymq.Close()
 	if err != nil {
 		fmt.Println(err)
 	}
 
 	//清理所有已经推送数据
-	err = gbblot.CleanDB()
+	err = bunnymq.CleanDB()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -210,4 +206,3 @@ func main() {
 }
 
 ```
- 
