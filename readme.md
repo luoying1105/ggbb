@@ -4,17 +4,25 @@
 
 基于go.etcd.io/bbolt 实现消息订阅模式
 
-#### 安装与依赖
+#### 安装与
 
-1. 克隆项目：
    ```bash
-   git clone http://gitlab.cnns/luoying/gbbolt.git
+   go env -w GOINSECURE=gitlab.cnns
+   go get gitlab.cnns/luoying/gbbolt@v1.0.1
    ```
 
-2. 安装依赖：
-   在项目目录下，执行以下命令安装依赖：
-   ```bash
-   go mod tidy
+go mod 结构如下
+
+   ```
+go 1.21.4
+
+require gitlab.cnns/luoying/gbbolt v1.0.1
+
+require (
+go.etcd.io/bbolt v1.3.10 // indirect
+golang.org/x/sys v0.20.0 // indirect
+)
+
    ```
 
 #### 使用说明
@@ -22,7 +30,8 @@
 假设推送数据结构如下
 
    ```go
-      import gbblot "gitlab.cnns/luoying/gbbolt/pkg"
+   import gbblot "gitlab.cnns/luoying/gbbolt/pkg"
+
 type testStruct struct {
 sid     string
 Message string
