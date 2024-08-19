@@ -6,19 +6,19 @@ import (
 	"strconv"
 )
 
-type ConsumerProgressManager struct {
+type consumerProgressManager struct {
 	dbClient *dbClient
 }
 
-func NewConsumerProgressManager(dbClient *dbClient) *ConsumerProgressManager {
+func newConsumerProgressManager(dbClient *dbClient) *consumerProgressManager {
 	dbClient.ensureBucketExists(consumerProgressBucket)
-	return &ConsumerProgressManager{
+	return &consumerProgressManager{
 		dbClient: dbClient,
 	}
 }
 
 // GetProgress retrieves the progress of a consumer for a specific queue.
-func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (int64, error) {
+func (cpm *consumerProgressManager) getProgress(consumerID, queueName string) (int64, error) {
 	key := cpm.buildProgressKey(consumerID, queueName)
 	value, err := cpm.dbClient.get(consumerProgressBucket, key)
 	if err != nil {
@@ -41,12 +41,12 @@ func (cpm *ConsumerProgressManager) GetProgress(consumerID, queueName string) (i
 }
 
 // UpdateProgress updates the progress of a consumer for a specific queue.
-func (cpm *ConsumerProgressManager) UpdateProgress(consumerID, queueName string, newProgress int64) error {
+func (cpm *consumerProgressManager) updateProgress(consumerID, queueName string, newProgress int64) error {
 	key := cpm.buildProgressKey(consumerID, queueName)
 	return cpm.dbClient.put(consumerProgressBucket, key, []byte(fmt.Sprintf("%d", newProgress)))
 }
 
 // buildProgressKey constructs a unique key for storing consumer progress.
-func (cpm *ConsumerProgressManager) buildProgressKey(consumerID, queueName string) string {
+func (cpm *consumerProgressManager) buildProgressKey(consumerID, queueName string) string {
 	return fmt.Sprintf("%s:%s", consumerID, queueName)
 }

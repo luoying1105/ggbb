@@ -20,7 +20,7 @@ type Queue[T any] struct {
 	db              *dbClient
 	coder           Coder[T]
 	msgManager      *MessageStore[T]
-	progressManager *ConsumerProgressManager
+	progressManager *consumerProgressManager
 	mu              sync.Mutex // To ensure thread-safe operations
 }
 
@@ -39,7 +39,7 @@ func NewQueue[T any](queueName, dbPath string, coder Coder[T]) (*Queue[T], error
 	if err != nil {
 		return nil, err
 	}
-	progressManager := NewConsumerProgressManager(db)
+	progressManager := newConsumerProgressManager(db)
 	return &Queue[T]{
 		queueName:       queueName,
 		db:              db,
@@ -61,7 +61,7 @@ func (q *Queue[T]) Dequeue(consumerID string) (Msg[T], error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	// 获取当前消费者的进度
-	progress, err := q.progressManager.GetProgress(consumerID, q.queueName)
+	progress, err := q.progressManager.getProgress(consumerID, q.queueName)
 	if err != nil {
 		return nil, err
 	}

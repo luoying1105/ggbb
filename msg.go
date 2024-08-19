@@ -11,7 +11,7 @@ type MsgImpl[T any] struct {
 	queueName       string
 	acked           bool
 	consumerID      string
-	progressManager *ConsumerProgressManager
+	progressManager *consumerProgressManager
 	processed       bool
 }
 
@@ -20,14 +20,14 @@ func (m *MsgImpl[T]) Ack() error {
 	queueName := m.queueName
 
 	// 获取当前进度
-	progress, err := m.progressManager.GetProgress(consumerID, queueName)
+	progress, err := m.progressManager.getProgress(consumerID, queueName)
 	if err != nil {
 		return err
 	}
 
 	// 更新进度
 	newProgress := progress + 1
-	err = m.progressManager.UpdateProgress(consumerID, queueName, newProgress)
+	err = m.progressManager.updateProgress(consumerID, queueName, newProgress)
 	if err != nil {
 		return err
 	}
