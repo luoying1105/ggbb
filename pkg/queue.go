@@ -2,9 +2,15 @@ package pkg
 
 import (
 	"sync"
+	"sync/atomic"
 )
 
 const dbName = "ggb.db"
+
+var (
+	clientRefCount int32
+	clientMutex    sync.Mutex
+)
 
 // Queue encapsulates the operations to enqueue and dequeue messages in a queue.
 type Queue[T any] struct {
@@ -17,17 +23,20 @@ type Queue[T any] struct {
 
 // NewQueue creates a new queue with the given database client, queue name, and coder.
 func NewQueue[T any](queueName string, coder Coder[T]) (*Queue[T], error) {
-	// Internally, create and manage the DBClient.
-	dbClient, err := NewDBClient(dbName)
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+	err := initDBClient()
 	if err != nil {
 		return nil, err
 	}
+	atomic.AddInt32(&clientRefCount, 1)
+
 	// Initialize MessageStore and ConsumerProgressManager
-	msgManager, err := NewMessageStore[T](dbClient, coder)
+	msgManager, err := NewMessageStore[T](globalDBClient, coder)
 	if err != nil {
 		return nil, err
 	}
-	progressManager := NewConsumerProgressManager(dbClient)
+	progressManager := NewConsumerProgressManager(globalDBClient)
 	return &Queue[T]{
 		queueName:       queueName,
 		coder:           coder,
@@ -68,12 +77,23 @@ func (q *Queue[T]) Dequeue(consumerID string) (Msg[T], error) {
 	}, nil
 }
 
-// Close cleans up resources by closing the database connection.
-func (q *Queue[T]) Close() error {
-	return q.msgManager.dbClient.Close()
+// CleanDB cleans up consumed messages.
+func CleanDB() error {
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+	err := initDBClient()
+	if err != nil {
+		return err
+	}
+	return globalDBClient.CleanupAllConsumed()
 }
 
-// generateKey generates a unique key for each item in the queue.
-func (q *Queue[T]) CleanDB() error {
-	return q.msgManager.dbClient.CleanupAllConsumed()
+func Close() error {
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+
+	if atomic.AddInt32(&clientRefCount, -1) == 0 {
+		return globalDBClient.Close()
+	}
+	return nil
 }

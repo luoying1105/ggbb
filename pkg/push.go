@@ -18,6 +18,7 @@ type DBClientInterface interface {
 	backupAndReopen() error
 	Delete(bucketName, key string) error
 	Close() error
+
 	GetFirst(bucketName string) (*KeyValue, error)
 }
 

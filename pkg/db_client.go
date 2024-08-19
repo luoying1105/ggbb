@@ -3,8 +3,21 @@ package pkg
 import (
 	bolt "go.etcd.io/bbolt"
 	"strconv"
+	"sync"
 	"time"
 )
+
+var globalDBClient *DBClient
+var dbClientOnce sync.Once
+
+func initDBClient() error {
+	var err error
+	dbClientOnce.Do(func() {
+		globalDBClient, err = NewDBClient(dbName)
+
+	})
+	return err
+}
 
 type DBClient struct {
 	db     *bolt.DB
@@ -25,7 +38,6 @@ func NewDBClient(dbPath string) (*DBClient, error) {
 
 // CreateBucket creates a bucket if it does not already exist.
 func (client *DBClient) CreateBucket(bucketName string) error {
-
 	return client.update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {

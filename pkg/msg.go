@@ -17,7 +17,7 @@ type MsgImpl[T any] struct {
 
 func (m *MsgImpl[T]) Ack() error {
 	if !m.processed {
-		// Update the consumer's progress
+		// 更新该消费者的进度，而不删除消息
 		currentProgress, err := m.progressManager.GetProgress(m.consumerID, m.queueName)
 		if err != nil {
 			return err
