@@ -1,4 +1,4 @@
-package pkg
+package bunnymq
 
 import (
 	bolt "go.etcd.io/bbolt"

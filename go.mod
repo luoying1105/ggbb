@@ -1,4 +1,4 @@
-module gitlab.cnns/luoying/gbbolt
+module gitlab.cnns/luoying/bunnymq
 
 go 1.21.4
 

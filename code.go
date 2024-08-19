@@ -1,4 +1,4 @@
-package pkg
+package bunnymq
 
 import "encoding/json"
 

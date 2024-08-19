@@ -1,4 +1,4 @@
-package pkg
+package bunnymq
 
 type Msg[T any] interface {
 	Ack() error
