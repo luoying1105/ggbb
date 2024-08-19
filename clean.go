@@ -29,7 +29,6 @@ func (client *dbClient) isBucketConsumedByAll(tx *bolt.Tx, bucketName string) (b
 		if err != nil {
 			return false, err
 		}
-
 		if progressInt < maxID {
 			consumedByAll = false
 			break
@@ -86,9 +85,7 @@ func (client *dbClient) cleanupBucket(tx *bolt.Tx, bucketName string) error {
 	if bucket == nil {
 		return ErrBucketNotFound
 	}
-
 	cursor := bucket.Cursor()
-
 	// 仅删除当前消费完成最小的一条消息
 	_, v := cursor.First()
 	if v != nil {

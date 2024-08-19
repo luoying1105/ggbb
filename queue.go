@@ -65,7 +65,6 @@ func (q *Queue[T]) Dequeue(consumerID string) (Msg[T], error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(consumerID, q.queueName, progress)
 
 	// 根据进度读取消息
 	data, err := q.msgManager.Read(q.queueName, fmt.Sprintf("%d", progress+1))

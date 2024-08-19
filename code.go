@@ -2,7 +2,6 @@ package bunnymq
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type Coder[T any] interface {
@@ -20,8 +19,6 @@ func (c *JsonCoder[T]) Encode(data T) ([]byte, error) {
 // Decode 将 JSON 字节数组解码为任意类型 T
 func (c *JsonCoder[T]) Decode(encodedData []byte) (T, error) {
 	var data T
-
 	err := json.Unmarshal(encodedData, &data)
-	fmt.Println(data)
 	return data, err
 }

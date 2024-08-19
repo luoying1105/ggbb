@@ -5,6 +5,7 @@ import (
 	"fmt"
 	bolt "go.etcd.io/bbolt"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -13,16 +14,31 @@ type dbClient struct {
 	dbPath string
 }
 
-// ErrTxTimeout is an error for transaction timeout
-var ErrTxTimeout = errors.New("transaction timed out")
+var (
+	dbClientCache = make(map[string]*dbClient)
+	cacheMutex    sync.Mutex
+	ErrTxTimeout  = errors.New("transaction timed out")
+)
 
 // newDBClient creates a new database client with an increased timeout for write transactions
 func newDBClient(dbPath string) (*dbClient, error) {
-	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 5 * time.Second}) // Increased timeout to 5 seconds
-	if err != nil {
-		return nil, ErrFailedToCreate
+	cacheMutex.Lock()
+	defer cacheMutex.Unlock()
+
+	// 检查缓存中是否已经存在该 dbClient
+	if client, exists := dbClientCache[dbPath]; exists {
+		return client, nil
 	}
-	return &dbClient{db: db, dbPath: dbPath}, nil
+
+	// 如果不存在，则创建新的 dbClient
+	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	client := &dbClient{db: db, dbPath: dbPath}
+	dbClientCache[dbPath] = client
+	return client, nil
 }
 
 // Put stores a key-value pair in a specified bucket with a retry mechanism
@@ -101,7 +117,6 @@ func (client *dbClient) GetNext(bucketName, progress string) (*KeyValue, error) 
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
-		fmt.Println("get bucket", bucketName, progress)
 		// 使用 progress 作为键直接获取对应的值
 		value := bucket.Get([]byte(progress))
 		if value == nil {

@@ -19,7 +19,7 @@ func TestMultiQueue1(t *testing.T) {
 
 	var queues []*Queue[testStruct]
 	for _, queueName := range queueNames {
-		queue, err := NewQueue[testStruct](queueName, "test3.db", &JsonCoder[testStruct]{})
+		queue, err := NewQueue[testStruct](queueName, "mes1.db", &JsonCoder[testStruct]{})
 		if err != nil {
 			t.Fatalf("Error creating queue %s: %v", queueName, err)
 		}
