@@ -27,7 +27,7 @@ func TestMultiQueue1(t *testing.T) {
 		defer queue.Close()
 
 	}
-
+	defer cleanDatabase("mes1.db")
 	// Push 30 messages to each queue
 	for i, queue := range queues {
 		num := 0
@@ -87,6 +87,5 @@ func TestMultiQueue1(t *testing.T) {
 			t.Errorf("Consumer %s did not receive all messages from %s, received: %d", consumerID, queueNames[i+1], receivedMessages)
 		}
 	}
-	cleanDatabase()
 
 }

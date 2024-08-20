@@ -117,20 +117,19 @@ func TestQueueMultipleConsumers(t *testing.T) {
 
 // 不同队列，只有一个消费者消费了一条队列
 // Cleanup the database before running the test
-func cleanDatabase() {
-	err := CleanDB("test.db")
+func cleanDatabase(path string) {
+	err := CleanDB(path)
 	if err != nil {
 		fmt.Printf("Error cleaning database: %v\n", err)
 	}
 }
 
 func TestMultiQueue(t *testing.T) {
-	defer cleanDatabase()
 
 	// Define queue names
 	queueNames := []string{"queue1", "queue2", "queue3"}
 	path := "1.db"
-
+	defer cleanDatabase(path, )
 	// Create queues
 	var queues []*Queue[testStruct]
 	for _, queueName := range queueNames {
