@@ -143,12 +143,19 @@ func (client *dbClient) update(fn func(*bolt.Tx) error) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
+	// 如果在fn(tx)执行时出现错误，事务会回滚
 	if err := fn(tx); err != nil {
+		tx.Rollback() // 手动回滚
 		return err
 	}
-	return tx.Commit()
+
+	// 如果提交时出现错误，事务也会回滚
+	if err := tx.Commit(); err != nil {
+		tx.Rollback() // 手动回滚
+		return err
+	}
+
+	return nil
 }
 
 func (client *dbClient) delete(bucketName, key string) error {
